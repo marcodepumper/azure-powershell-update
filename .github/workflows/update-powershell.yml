@@ -1,0 +1,72 @@
+name: Update PowerShell on Azure VMs (Canary Deployment)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  update-dev-vms:
+    runs-on: ubuntu-latest
+    name: Update PowerShell on Development VMs (Canary)
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Authenticate to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Run PowerShell update script on Development VMs
+      run: |
+        az vm run-command invoke \
+          --resource-group ${{ secrets.DEV_RESOURCE_GROUP }} \
+          --name ${{ secrets.DEV_VM_NAME_1 }} \
+          --command-id RunPowerShellScript \
+          --scripts @scripts/Update-PowerShell.ps1 \
+          --parameters requiredVersion=7.2.0 recoveryVaultName=${{ secrets.RECOVERY_VAULT_NAME }} resourceGroupName=${{ secrets.RESOURCE_GROUP_NAME }} \
+          || exit 1
+        
+        az vm run-command invoke \
+          --resource-group ${{ secrets.DEV_RESOURCE_GROUP }} \
+          --name ${{ secrets.DEV_VM_NAME_2 }} \
+          --command-id RunPowerShellScript \
+          --scripts @scripts/Update-PowerShell.ps1 \
+          --parameters requiredVersion=7.2.0 recoveryVaultName=${{ secrets.RECOVERY_VAULT_NAME }} resourceGroupName=${{ secrets.RESOURCE_GROUP_NAME }} \
+          || exit 1
+
+    - name: Proceed to Production stage if Canary is successful
+      if: ${{ success() }}
+      run: echo "Canary deployment successful. Proceeding to Production VMs."
+
+  update-prod-vms:
+    runs-on: ubuntu-latest
+    name: Update PowerShell on Production VMs
+    needs: update-dev-vms  # Ensure dev VM update succeeds before running production
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Authenticate to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Run PowerShell update script on Production VMs
+      run: |
+        az vm run-command invoke \
+          --resource-group ${{ secrets.PROD_RESOURCE_GROUP }} \
+          --name ${{ secrets.PROD_VM_NAME_1 }} \
+          --command-id RunPowerShellScript \
+          --scripts @scripts/Update-PowerShell.ps1 \
+          --parameters requiredVersion=7.2.0 recoveryVaultName=${{ secrets.RECOVERY_VAULT_NAME }} resourceGroupName=${{ secrets.RESOURCE_GROUP_NAME }} \
+          || exit 1
+        
+        az vm run-command invoke \
+          --resource-group ${{ secrets.PROD_RESOURCE_GROUP }} \
+          --name ${{ secrets.PROD_VM_NAME_2 }} \
+          --command-id RunPowerShellScript \
+          --scripts @scripts/Update-PowerShell.ps1 \
+          --parameters requiredVersion=7.2.0 recoveryVaultName=${{ secrets.RECOVERY_VAULT_NAME }} resourceGroupName=${{ secrets.RESOURCE_GROUP_NAME }} \
+          || exit 1
